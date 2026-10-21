@@ -41,6 +41,16 @@
     .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--off-bg); color: var(--off-text); }
     .badge.working { background: var(--ok-bg); color: var(--ok-text); }
     .city-weather { margin-top: 8px; }
+    .city-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .city-actions button { flex: 1; white-space: nowrap; }
+    .city-edit { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .city-edit input { min-width: 0; }
+    button.secondary { background: #fff; color: var(--primary); border-color: #cbd5e1; font-size: 14px; padding: 6px 10px; }
+    button.secondary:hover { background: var(--subtle); }
+    button.danger { color: var(--error); border-color: var(--error); }
+    .search-form { margin-top: 16px; }
+    .search-results li { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .search-results li button { width: auto; flex: none; }
     .api-box { padding: 16px; border: 1px dashed #94a3b8; border-radius: 12px; background: var(--card); font-size: 13px; }
     .api-box li { margin-top: 12px; font-weight: 600; }
     .api-box li > div { font-weight: 400; }
@@ -58,7 +68,13 @@
   <section class="card wide">
     <h2><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>글로벌 미팅 보드</h2>
     <div class="cities" id="cities"></div>
-    <p class="muted">업무 중 = 현지 평일 09–18시</p>
+    <p id="cities-empty" class="muted" hidden>보드에 도시가 없어요. 아래에서 검색해 추가해 보세요.</p>
+    <form id="city-search-form" class="search-form">
+      <label>도시 추가 <input type="search" id="city-query" placeholder="예: 도쿄, New York" maxlength="50" required></label>
+      <button>검색</button>
+    </form>
+    <div id="city-search-result" class="result search-results" aria-live="polite"></div>
+    <p class="muted">업무 중 = 현지 평일 09–18시 · 도시 목록은 이 브라우저에만 저장돼요</p>
     <p class="muted source"><a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a></p>
   </section>
 
@@ -95,6 +111,9 @@
       <li>날씨 (Open-Meteo)
         <div id="api-weather"></div>
       </li>
+      <li>도시 검색 (Open-Meteo Geocoding)
+        <div id="api-geocode"><span class="muted">아직 검색하지 않았어요</span></div>
+      </li>
       <li>환율 (Frankfurter)
         <div id="api-rate"></div>
       </li>
@@ -106,6 +125,7 @@
     const API = {
       holidays: (year, country) => `https://date.nager.at/api/v3/PublicHolidays/${year}/${country}`, // 🔌 Nager.Date 나라별 공휴일
       weather: (lat, lon) => `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`, // 🔌 Open-Meteo 현재 날씨
+      geocode: name => `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=5&language=ko`, // 🔌 Open-Meteo 도시 검색
       usdKrw: 'https://api.frankfurter.dev/v1/latest?base=USD&symbols=KRW', // 🔌 Frankfurter 달러→원 기준환율
     };
 
@@ -159,6 +179,27 @@
         return res.json();
       });
 
+    // localStorage는 사생활 보호 모드 등에서 막힐 수 있어서 실패해도 화면은 동작하게 함
+    function loadList(key, isValid, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw === null) return fallback;
+        const list = JSON.parse(raw);
+        return Array.isArray(list) ? list.filter(isValid) : fallback;
+      } catch {
+        return fallback;
+      }
+    }
+
+    function saveList(key, list) {
+      try {
+        localStorage.setItem(key, JSON.stringify(list));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     function calcSprint() {
       const start = document.getElementById('sprint-start').value;
       const days = Number(document.getElementById('sprint-days').value);
@@ -210,12 +251,15 @@
     calcSprint();
 
     // ── 글로벌 미팅 보드 ──
-    const CITIES = [
+    const DEFAULT_CITIES = [
       { name: '서울', tz: 'Asia/Seoul', lat: 37.5665, lon: 126.978 },
       { name: '샌프란시스코', tz: 'America/Los_Angeles', lat: 37.7749, lon: -122.4194 },
       { name: '런던', tz: 'Europe/London', lat: 51.5072, lon: -0.1276 },
       { name: '싱가포르', tz: 'Asia/Singapore', lat: 1.3521, lon: 103.8198 },
     ];
+    const CITY_STORAGE_KEY = 'pm-board.cities.v1';
+    const MAX_CITIES = 8;
+    const CITY_NAME_MAX = 30;
     const WORK_START_HOUR = 9;
     const WORK_END_HOUR = 18;
     const CLOCK_REFRESH_MS = 30 * 1000;
@@ -246,29 +290,122 @@
       return { hour: Number(parts.hour), minute: parts.minute, weekday: EN_WEEKDAYS.indexOf(parts.weekday) };
     }
 
-    document.getElementById('cities').innerHTML = CITIES.map((c, i) => `
-      <div class="city">
-        <strong>${c.name}</strong>
-        <div class="big" id="city-time-${i}"></div>
-        <span class="badge" id="city-status-${i}"></span>
-        <div id="city-weather-${i}" class="city-weather muted" aria-live="polite">날씨 불러오는 중…</div>
-      </div>`).join('');
+    const isValidTimeZone = tz => {
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: tz });
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const isValidCity = c => c && typeof c.name === 'string' && c.name.trim() !== '' && c.name.length <= CITY_NAME_MAX
+      && Number.isFinite(c.lat) && Number.isFinite(c.lon) && typeof c.tz === 'string' && isValidTimeZone(c.tz);
+    // 좌표를 소수 첫째 자리(약 11km)로 묶어 같은 도시를 두 번 넣지 않게 함
+    const cityKey = c => `${c.lat.toFixed(1)},${c.lon.toFixed(1)}`;
+
+    let cities = loadList(CITY_STORAGE_KEY, isValidCity, DEFAULT_CITIES);
+    let editingKey = null;       // 이름 수정 중인 도시
+    let pendingDeleteKey = null; // "정말 삭제?" 확인을 기다리는 도시
+    let searchResults = [];
+    let searchRun = 0;
+    const weatherCache = new Map(); // 도시 → 날씨 요청(Promise), 목록을 다시 그려도 다시 부르지 않음
+
+    const cityResult = document.getElementById('city-search-result');
+
+    function showCityMessage(text, isError) {
+      cityResult.className = `result search-results ${isError ? 'error' : 'muted'}`;
+      cityResult.textContent = text;
+    }
+
+    function setCities(next) {
+      cities = next;
+      editingKey = null;
+      pendingDeleteKey = null;
+      renderCities();
+      if (!saveList(CITY_STORAGE_KEY, cities)) showCityMessage('⚠️ 이 브라우저에 저장하지 못했어요. 새로고침하면 바뀐 목록이 사라져요.', true);
+    }
+
+    function makeButton(text, action, className = 'secondary') {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = className;
+      button.dataset.action = action;
+      button.textContent = text;
+      return button;
+    }
+
+    function cityTile(c) {
+      const key = cityKey(c);
+      const tile = document.createElement('div');
+      tile.className = 'city';
+      tile.dataset.key = key;
+      tile.dataset.tz = c.tz;
+
+      if (key === editingKey) {
+        const form = document.createElement('form');
+        form.className = 'city-edit';
+        const input = document.createElement('input');
+        input.value = c.name;
+        input.required = true;
+        input.maxLength = CITY_NAME_MAX;
+        input.setAttribute('aria-label', '도시 표시 이름');
+        const actions = document.createElement('div');
+        actions.className = 'city-actions';
+        const save = makeButton('저장', 'save', '');
+        save.type = 'submit';
+        actions.append(save, makeButton('취소', 'cancel'));
+        form.append(input, actions);
+        tile.append(form);
+      } else {
+        addLine(tile, 'strong', c.name);
+      }
+
+      addLine(tile, 'div', '', 'big city-time');
+      addLine(tile, 'span', '', 'badge');
+      const weather = document.createElement('div');
+      weather.className = 'city-weather muted';
+      weather.textContent = '날씨 불러오는 중…';
+      tile.append(weather);
+      fillWeather(weather, c);
+
+      if (key !== editingKey) {
+        const actions = document.createElement('div');
+        actions.className = 'city-actions';
+        const edit = makeButton('수정', 'edit');
+        edit.setAttribute('aria-label', `${c.name} 이름 수정`);
+        const isConfirming = key === pendingDeleteKey;
+        const del = makeButton(isConfirming ? '정말 삭제?' : '삭제', 'delete', isConfirming ? 'secondary danger' : 'secondary');
+        del.setAttribute('aria-label', isConfirming ? `${c.name} 삭제 확인` : `${c.name} 삭제`);
+        actions.append(edit, del);
+        tile.append(actions);
+      }
+      return tile;
+    }
+
+    function renderCities() {
+      document.getElementById('cities').replaceChildren(...cities.map(cityTile));
+      document.getElementById('cities-empty').hidden = cities.length > 0;
+      showApiUrls('api-weather', cities.map(c => API.weather(c.lat, c.lon)));
+      renderClocks();
+    }
 
     function renderClocks() {
-      CITIES.forEach((c, i) => {
-        const { hour, minute, weekday } = localNow(c.tz);
+      document.querySelectorAll('#cities .city').forEach(tile => {
+        const { hour, minute, weekday } = localNow(tile.dataset.tz);
         const isWeekend = weekday === 0 || weekday === 6;
         const isWorking = !isWeekend && hour >= WORK_START_HOUR && hour < WORK_END_HOUR;
-        document.getElementById(`city-time-${i}`).textContent = `${WEEKDAYS[weekday]} ${pad(hour)}:${minute}`;
-        const status = document.getElementById(`city-status-${i}`);
+        tile.querySelector('.city-time').textContent = `${WEEKDAYS[weekday]} ${pad(hour)}:${minute}`;
+        const status = tile.querySelector('.badge');
         status.textContent = isWorking ? '업무 중' : isWeekend ? '주말' : '퇴근';
         status.classList.toggle('working', isWorking);
       });
     }
 
-    function loadWeather(url, i) {
-      const el = document.getElementById(`city-weather-${i}`);
-      fetchJson(url)
+    // 도시마다 따로 불러서 한 곳이 실패해도 나머지는 보이게
+    function fillWeather(el, c) {
+      const key = cityKey(c);
+      if (!weatherCache.has(key)) weatherCache.set(key, fetchJson(API.weather(c.lat, c.lon)));
+      weatherCache.get(key)
         .then(data => {
           const { temperature_2m, weather_code, time } = data.current;
           const [desc, emoji] = WEATHER[weather_code] ?? ['알 수 없음', '❓'];
@@ -283,11 +420,73 @@
         });
     }
 
-    renderClocks();
+    document.getElementById('cities').addEventListener('click', e => {
+      const button = e.target.closest('button[data-action]');
+      if (!button || button.type === 'submit') return;
+      const key = button.closest('.city').dataset.key;
+      const action = button.dataset.action;
+      if (action === 'delete' && pendingDeleteKey === key) return setCities(cities.filter(c => cityKey(c) !== key));
+      editingKey = action === 'edit' ? key : null;
+      pendingDeleteKey = action === 'delete' ? key : null;
+      renderCities();
+      if (action === 'edit') document.querySelector(`.city[data-key="${key}"] input`).focus();
+    });
+
+    document.getElementById('cities').addEventListener('submit', e => {
+      e.preventDefault();
+      const key = e.target.closest('.city').dataset.key;
+      const name = e.target.querySelector('input').value.trim();
+      if (!name) return;
+      setCities(cities.map(c => (cityKey(c) === key ? { ...c, name } : c)));
+    });
+
+    document.getElementById('city-search-form').addEventListener('submit', e => {
+      e.preventDefault();
+      const query = document.getElementById('city-query').value.trim();
+      if (!query) return;
+      const url = API.geocode(query);
+      showApiUrls('api-geocode', [url]);
+      const run = ++searchRun;
+      showCityMessage('도시 검색 중…');
+
+      fetchJson(url)
+        .then(data => {
+          if (run !== searchRun) return; // 응답 전에 다시 검색했으면 무시
+          searchResults = (data.results ?? [])
+            .map(r => ({ name: String(r.name ?? '').slice(0, CITY_NAME_MAX), tz: r.timezone, lat: r.latitude, lon: r.longitude, place: [r.admin1, r.country].filter(Boolean).join(', ') }))
+            .filter(isValidCity);
+          if (searchResults.length === 0) return showCityMessage('검색 결과가 없어요. 다른 이름이나 영어로 검색해 보세요.');
+          cityResult.className = 'result search-results';
+          const list = document.createElement('ul');
+          searchResults.forEach((c, i) => {
+            const li = document.createElement('li');
+            addLine(li, 'span', `${c.name} · ${c.place} (${c.tz})`);
+            const add = makeButton('추가', 'add');
+            add.dataset.index = i;
+            li.append(add);
+            list.append(li);
+          });
+          cityResult.replaceChildren(list);
+        })
+        .catch(err => {
+          if (run !== searchRun) return;
+          showCityMessage(`⚠️ 도시를 검색하지 못했어요 (${err.message}). 잠시 후 다시 검색해 주세요.`, true);
+        });
+    });
+
+    cityResult.addEventListener('click', e => {
+      const button = e.target.closest('button[data-action="add"]');
+      if (!button) return;
+      const { place, ...city } = searchResults[Number(button.dataset.index)];
+      if (cities.length >= MAX_CITIES) return showCityMessage(`도시는 최대 ${MAX_CITIES}개까지 둘 수 있어요. 하나를 삭제한 뒤 추가해 주세요.`, true);
+      if (cities.some(c => cityKey(c) === cityKey(city))) return showCityMessage(`${city.name}은(는) 이미 보드에 있어요.`, true);
+      setCities([...cities, city]);
+      document.getElementById('city-query').value = '';
+      showCityMessage(`✅ ${city.name}을(를) 추가했어요.`);
+    });
+
+    renderCities();
     setInterval(renderClocks, CLOCK_REFRESH_MS);
-    const weatherUrls = CITIES.map(c => API.weather(c.lat, c.lon));
-    showApiUrls('api-weather', weatherUrls);
-    weatherUrls.forEach(loadWeather); // 도시마다 따로 불러서 한 곳이 실패해도 나머지는 보이게
 
     // ── 해외 SaaS 비용 환산 ──
     const costForm = document.getElementById('cost-form');
