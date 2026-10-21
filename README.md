@@ -15,9 +15,9 @@ PM 데일리 보드는 이 세 가지를 한 화면에서 바로 확인하게 �
 
 | 칸 | 찾을 것 | Nager.Date (공휴일) | Open-Meteo (날씨) | Frankfurter (환율) |
 | --- | --- | --- | --- | --- |
-| ① 기본 주소 | 모든 주소의 앞부분 | | | |
-| ② 메뉴 | 무엇을 받을 수 있나 | | | |
-| ③ 옵션 | 주소 뒤 `?이름=값` | | | |
-| ④ 응답 모양 | 어떤 JSON이 오나 | | | |
-| ⑤ 키 | 가입·키가 필요한가 | | | |
-| ⑥ 규칙 | 무료 범위·출처 표기 | | | |
+| ① 기본 주소 | 모든 주소의 앞부분 | `https://date.nager.at/api/v3/` | `https://api.open-meteo.com/v1/` | `https://api.frankfurter.dev/v1/` |
+| ② 메뉴 | 무엇을 받을 수 있나 | **`PublicHolidays/{연도}/{나라}`** (사용), `NextPublicHolidays/{나라}`, `LongWeekend/{연도}/{나라}`, `AvailableCountries` | **`forecast`** (예보·현재 날씨, 사용) | **`latest`** (최신 기준환율, 사용), `/{날짜}`, `/{시작}..{끝}`, `currencies` |
+| ③ 옵션 | 주소 뒤 `?이름=값` | `?` 대신 주소 안에 연도·나라 코드 (`2026/KR`, `2027/US`) | `latitude`, `longitude`, `current=temperature_2m,weather_code`, `timezone=auto` | `base=USD`, `symbols=KRW` |
+| ④ 응답 모양 | 어떤 JSON이 오나 | `[{ "date": "2026-01-01", "localName": "새해", "name": "New Year's Day", "global": true, "types": ["Public"] }, …]` | `{ "timezone": "Asia/Seoul", "current": { "time": "2026-10-21T16:15", "temperature_2m": 13.2, "weather_code": 0 } }` | `{ "base": "USD", "date": "2026-10-20", "rates": { "KRW": 1327.84 } }` |
+| ⑤ 키 | 가입·키가 필요한가 | 필요 없음 | 필요 없음 | 필요 없음 |
+| ⑥ 규칙 | 무료 범위·출처 표기 | 문서에 "No Rate Limits", 이용약관 동의 필요 · 화면에 "Holiday data by Nager.Date" 표기 | 비상업적 용도 무료, 하루 1만 회 이하 권장, 출처 표기 요청 → "Weather data by Open-Meteo.com" | 할당량 없음(남용 방지용 속도 제한만), 하루 한 번 갱신되는 기준환율 · 화면에 "Frankfurter (ECB 기준환율)" 표기 |
