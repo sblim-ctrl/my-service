@@ -12,7 +12,7 @@
     }
     * { box-sizing: border-box; }
     body { font-family: system-ui, -apple-system, 'Apple SD Gothic Neo', sans-serif; margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--text); line-height: 1.5; }
-    .board { max-width: 1040px; margin: 0 auto; display: grid; gap: 16px; }
+    .board { max-width: 1040px; margin: 0 auto; display: grid; gap: 16px; align-items: start; }
     @media (min-width: 900px) { .board { grid-template-columns: 1fr 1fr; } }
     .wide { grid-column: 1 / -1; }
     header h1 { margin: 0; font-size: 28px; }
@@ -41,8 +41,15 @@
     .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--off-bg); color: var(--off-text); }
     .badge.working { background: var(--ok-bg); color: var(--ok-text); }
     .city-weather { margin-top: 8px; }
-    .city-actions { display: flex; gap: 8px; margin-top: 12px; }
-    .city-actions button { flex: 1; white-space: nowrap; }
+    .city-actions, .item-actions { display: flex; gap: 8px; margin-top: 12px; }
+    .city-actions button, .item-actions button { flex: 1; white-space: nowrap; }
+    .span-all { grid-column: 1 / -1; }
+    .item-actions { margin-top: 0; }
+    .list-title { margin: 24px 0 0; font-size: 16px; }
+    .saas-list li { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+    .saas-list .item-actions { grid-column: 1 / -1; margin-top: 4px; }
+    .saas-cost { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+    .saas-total { padding-top: 12px; border-top: 2px solid var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
     .city-edit { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
     .city-edit input { min-width: 0; }
     button.secondary { background: #fff; color: var(--primary); border-color: #cbd5e1; font-size: 14px; padding: 6px 10px; }
@@ -91,12 +98,23 @@
   </section>
 
   <section class="card">
-    <h2><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>해외 SaaS 비용 환산</h2>
-    <form id="cost-form">
-      <label>월 단가 (USD) <input type="number" id="cost-price" min="0" step="0.01" value="15" inputmode="decimal" required></label>
-      <label>좌석 수 <input type="number" id="cost-seats" min="1" step="1" value="10" inputmode="numeric" required></label>
+    <h2><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>해외 SaaS 비용 관리</h2>
+    <form id="saas-form">
+      <label>서비스 이름 <input id="saas-name" maxlength="40" placeholder="예: Figma" required></label>
+      <label>좌석당 단가 <input type="number" id="saas-price" min="0" step="0.01" value="15" inputmode="decimal" required></label>
+      <label>통화 <select id="saas-currency"><option value="USD">USD ($)</option><option value="EUR">EUR (€)</option></select></label>
+      <label>결제 주기 <select id="saas-cycle"><option value="month">월 결제</option><option value="year">연 결제</option></select></label>
+      <label>좌석 수 <input type="number" id="saas-seats" min="1" step="1" value="10" inputmode="numeric" required></label>
+      <label class="span-all">메모 <input id="saas-memo" maxlength="100" placeholder="예: 디자인팀, 11월 갱신"></label>
+      <div class="span-all item-actions">
+        <button id="saas-submit">등록</button>
+        <button type="button" class="secondary" id="saas-cancel" hidden>수정 취소</button>
+      </div>
     </form>
-    <div id="cost-result" class="result muted" aria-live="polite">환율 불러오는 중…</div>
+    <div id="saas-preview" class="result muted" aria-live="polite">환율 불러오는 중…</div>
+    <h3 class="list-title">등록된 구독</h3>
+    <div id="saas-list" aria-live="polite"></div>
+    <p class="muted">구독 목록은 이 브라우저에만 저장돼요</p>
     <p class="muted source"><a href="https://frankfurter.dev" target="_blank" rel="noopener">Frankfurter (ECB 기준환율)</a></p>
   </section>
 
@@ -126,7 +144,7 @@
       holidays: (year, country) => `https://date.nager.at/api/v3/PublicHolidays/${year}/${country}`, // 🔌 Nager.Date 나라별 공휴일
       weather: (lat, lon) => `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`, // 🔌 Open-Meteo 현재 날씨
       geocode: name => `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=5&language=ko`, // 🔌 Open-Meteo 도시 검색
-      usdKrw: 'https://api.frankfurter.dev/v1/latest?base=USD&symbols=KRW', // 🔌 Frankfurter 달러→원 기준환율
+      rates: 'https://api.frankfurter.dev/v1/latest?base=USD&symbols=KRW,EUR', // 🔌 Frankfurter 달러 기준 원·유로 환율
     };
 
     // 영국·중국 등은 Nager.Date 데이터가 지역별로 나뉘거나 연휴가 빠져 있어서 제외
@@ -488,42 +506,172 @@
     renderCities();
     setInterval(renderClocks, CLOCK_REFRESH_MS);
 
-    // ── 해외 SaaS 비용 환산 ──
-    const costForm = document.getElementById('cost-form');
-    const costResult = document.getElementById('cost-result');
-    const won = n => Math.round(n).toLocaleString('ko-KR');
-    const usd = n => n.toLocaleString('en-US', { maximumFractionDigits: 2 });
-    let usdRate = null; // { rate, date }
+    // ── 해외 SaaS 비용 관리 ──
+    const CURRENCY_SYMBOLS = { USD: '$', EUR: '€' };
+    const CYCLES = { month: '월 결제', year: '연 결제' };
+    const SAAS_STORAGE_KEY = 'pm-board.saas.v1';
+    const SAAS_NAME_MAX = 40;
+    const SAAS_MEMO_MAX = 100;
 
-    function renderCost() {
-      if (!usdRate) return; // 환율을 받기 전(로딩·실패)에는 그 화면을 그대로 둠
-      costResult.className = 'result';
-      costResult.replaceChildren();
-      if (!costForm.checkValidity()) {
-        addLine(costResult, 'p', '월 단가와 좌석 수를 확인해 주세요', 'error');
-        return;
-      }
-      const price = Number(document.getElementById('cost-price').value);
-      const seats = Number(document.getElementById('cost-seats').value);
-      const totalUsd = price * seats;
-      addLine(costResult, 'p', `월 약 ${won(totalUsd * usdRate.rate)}원`, 'big');
-      addLine(costResult, 'p', `$${usd(price)} × ${seats}석 = $${usd(totalUsd)}`);
-      addLine(costResult, 'p', `1 USD = ${usdRate.rate.toLocaleString('ko-KR')}원 (${usdRate.date} 기준)`, 'muted');
+    const isValidSaas = s => s && typeof s.id === 'string'
+      && typeof s.name === 'string' && s.name.trim() !== '' && s.name.length <= SAAS_NAME_MAX
+      && Number.isFinite(s.price) && s.price >= 0
+      && Object.hasOwn(CURRENCY_SYMBOLS, s.currency) && Object.hasOwn(CYCLES, s.cycle)
+      && Number.isInteger(s.seats) && s.seats >= 1
+      && typeof s.memo === 'string' && s.memo.length <= SAAS_MEMO_MAX;
+
+    let saasItems = loadList(SAAS_STORAGE_KEY, isValidSaas, []);
+    let saasEditingId = null;
+    let saasPendingDeleteId = null;
+    let krwPer = null; // { USD, EUR, date } — 1 단위당 원화, 환율을 받기 전·실패하면 null
+
+    const saasForm = document.getElementById('saas-form');
+    const saasPreview = document.getElementById('saas-preview');
+    const saasField = id => document.getElementById(`saas-${id}`);
+    const won = n => Math.round(n).toLocaleString('ko-KR');
+    const money = (currency, n) => `${CURRENCY_SYMBOLS[currency]}${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+    // 연 결제는 12로 나눠 월 비용으로 맞춤
+    const monthlyKrw = s => (s.price * s.seats * krwPer[s.currency]) / (s.cycle === 'year' ? 12 : 1);
+    const describe = s => `${money(s.currency, s.price)} × ${s.seats}석 / ${CYCLES[s.cycle]}`;
+
+    function readSaasForm() {
+      return {
+        name: saasField('name').value.trim(),
+        price: Number(saasField('price').value),
+        currency: saasField('currency').value,
+        cycle: saasField('cycle').value,
+        seats: Number(saasField('seats').value),
+        memo: saasField('memo').value.trim(),
+      };
     }
 
-    showApiUrls('api-rate', [API.usdKrw]);
-    fetchJson(API.usdKrw)
+    function renderSaasPreview() {
+      if (!krwPer) return; // 환율을 받기 전(로딩·실패)에는 그 화면을 그대로 둠
+      saasPreview.className = 'result';
+      saasPreview.replaceChildren();
+      if (!saasField('price').validity.valid || !saasField('seats').validity.valid) {
+        addLine(saasPreview, 'p', '단가와 좌석 수를 확인해 주세요', 'error');
+        return;
+      }
+      const draft = readSaasForm();
+      const monthly = monthlyKrw(draft);
+      addLine(saasPreview, 'p', `월 약 ${won(monthly)}원`, 'big');
+      addLine(saasPreview, 'p', `${describe(draft)} · 연 약 ${won(monthly * 12)}원`);
+      addLine(saasPreview, 'p', `1 USD = ${krwPer.USD.toLocaleString('ko-KR')}원 · 1 EUR = ${krwPer.EUR.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}원 (${krwPer.date} 기준)`, 'muted');
+    }
+
+    function saasRow(s) {
+      const li = document.createElement('li');
+      const info = document.createElement('div');
+      addLine(info, 'strong', s.name);
+      addLine(info, 'div', describe(s), 'muted');
+      if (s.memo) addLine(info, 'div', s.memo, 'muted');
+      li.append(info);
+      addLine(li, 'div', krwPer ? `월 약 ${won(monthlyKrw(s))}원` : '원화 환산 불가', 'saas-cost');
+
+      const actions = document.createElement('div');
+      actions.className = 'item-actions';
+      const edit = makeButton(s.id === saasEditingId ? '수정 중…' : '수정', 'edit');
+      edit.setAttribute('aria-label', `${s.name} 수정`);
+      const isConfirming = s.id === saasPendingDeleteId;
+      const del = makeButton(isConfirming ? '정말 삭제?' : '삭제', 'delete', isConfirming ? 'secondary danger' : 'secondary');
+      del.setAttribute('aria-label', isConfirming ? `${s.name} 삭제 확인` : `${s.name} 삭제`);
+      actions.append(edit, del);
+      li.dataset.id = s.id;
+      li.append(actions);
+      return li;
+    }
+
+    function renderSaasList() {
+      const box = document.getElementById('saas-list');
+      if (saasItems.length === 0) {
+        box.replaceChildren();
+        addLine(box, 'p', '아직 등록된 구독이 없어요. 위에서 서비스를 등록해 보세요.', 'muted');
+        return;
+      }
+      const list = document.createElement('ul');
+      list.className = 'saas-list';
+      list.append(...saasItems.map(saasRow));
+      box.replaceChildren(list);
+      if (!krwPer) return addLine(box, 'p', '⚠️ 환율을 불러오지 못해 원화 합계를 계산할 수 없어요.', 'error');
+      const monthlyTotal = saasItems.reduce((sum, s) => sum + monthlyKrw(s), 0);
+      addLine(box, 'p', `합계 ${saasItems.length}개 · 월 약 ${won(monthlyTotal)}원 · 연 약 ${won(monthlyTotal * 12)}원`, 'saas-total');
+    }
+
+    function resetSaasForm() {
+      saasEditingId = null;
+      saasForm.reset();
+      saasField('submit').textContent = '등록';
+      saasField('cancel').hidden = true;
+      renderSaasPreview();
+    }
+
+    function setSaasItems(next) {
+      saasItems = next;
+      saasPendingDeleteId = null;
+      renderSaasList();
+      if (!saveList(SAAS_STORAGE_KEY, saasItems)) addLine(document.getElementById('saas-list'), 'p', '⚠️ 이 브라우저에 저장하지 못했어요. 새로고침하면 바뀐 목록이 사라져요.', 'error');
+    }
+
+    saasForm.addEventListener('input', renderSaasPreview);
+    saasForm.addEventListener('submit', e => {
+      e.preventDefault();
+      const item = readSaasForm();
+      if (saasEditingId) {
+        const id = saasEditingId;
+        resetSaasForm();
+        setSaasItems(saasItems.map(s => (s.id === id ? { ...item, id } : s)));
+      } else {
+        const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        resetSaasForm();
+        setSaasItems([...saasItems, { ...item, id }]);
+      }
+      saasField('name').focus();
+    });
+    saasField('cancel').addEventListener('click', () => {
+      resetSaasForm();
+      renderSaasList();
+    });
+
+    document.getElementById('saas-list').addEventListener('click', e => {
+      const button = e.target.closest('button[data-action]');
+      if (!button) return;
+      const id = button.closest('li').dataset.id;
+      const item = saasItems.find(s => s.id === id);
+      if (button.dataset.action === 'delete') {
+        if (saasPendingDeleteId !== id) {
+          saasPendingDeleteId = id;
+          return renderSaasList();
+        }
+        if (saasEditingId === id) resetSaasForm();
+        return setSaasItems(saasItems.filter(s => s.id !== id));
+      }
+      saasEditingId = id;
+      saasPendingDeleteId = null;
+      ['name', 'price', 'currency', 'cycle', 'seats', 'memo'].forEach(key => { saasField(key).value = item[key]; });
+      saasField('submit').textContent = '수정 저장';
+      saasField('cancel').hidden = false;
+      renderSaasPreview();
+      renderSaasList();
+      saasField('name').focus();
+    });
+
+    renderSaasList();
+    showApiUrls('api-rate', [API.rates]);
+    fetchJson(API.rates)
       .then(data => {
-        if (typeof data.rates?.KRW !== 'number') throw new Error('원화 환율이 응답에 없음');
-        usdRate = { rate: data.rates.KRW, date: data.date };
-        renderCost();
+        const { KRW, EUR } = data.rates ?? {};
+        if (typeof KRW !== 'number' || typeof EUR !== 'number') throw new Error('원화·유로 환율이 응답에 없음');
+        // 응답은 1 USD 기준이라, 1 EUR의 원화 값은 (원/달러) ÷ (유로/달러)로 계산
+        krwPer = { USD: KRW, EUR: KRW / EUR, date: data.date };
+        renderSaasPreview();
+        renderSaasList();
       })
       .catch(err => {
-        costResult.className = 'result error';
-        costResult.textContent = `⚠️ 환율을 불러오지 못했어요 (${err.message}). 잠시 후 새로고침해 주세요.`;
+        saasPreview.className = 'result error';
+        saasPreview.textContent = `⚠️ 환율을 불러오지 못했어요 (${err.message}). 목록은 그대로 쓸 수 있고, 원화 금액만 빠져요.`;
+        renderSaasList();
       });
-    costForm.addEventListener('input', renderCost);
-    costForm.addEventListener('submit', e => e.preventDefault());
   </script>
 </body>
 </html>
