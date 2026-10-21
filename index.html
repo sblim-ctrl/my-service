@@ -5,61 +5,88 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PM 데일리 보드</title>
   <style>
-    body { font-family: system-ui, sans-serif; display: grid; place-items: center; align-content: center; gap: 16px; min-height: 100vh; margin: 0; padding: 16px; box-sizing: border-box; background: #eef4fb; color: #222; }
-    .card { width: 100%; max-width: 480px; box-sizing: border-box; background: #fff; padding: 32px 48px; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,.08); text-align: center; }
-    .muted { color: #777; font-size: 14px; }
-    .error { color: #c0392b; }
-    .big { font-size: 28px; font-weight: bold; margin: 8px 0; }
-    form { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: end; }
-    label { display: grid; gap: 4px; font-size: 14px; text-align: left; }
-    input, select, button { font: inherit; padding: 4px 8px; border-radius: 8px; border: 1px solid #ccd; }
-    button { background: #345; color: #fff; cursor: pointer; }
-    ul { list-style: none; padding: 0; }
-    .cities { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
-    .city { padding: 12px; border-radius: 12px; background: #f5f8fc; }
-    .city .big { font-size: 24px; }
-    .api-box { width: 100%; max-width: 480px; box-sizing: border-box; padding: 12px 16px; border: 1px dashed #99a; border-radius: 12px; background: #fff; font-size: 13px; }
-    .api-box code { display: block; word-break: break-all; margin: 6px 0; color: #345; }
+    :root {
+      --bg: #f1f5f9; --card: #fff; --text: #0f172a; --muted: #475569; --border: #e2e8f0; --subtle: #f8fafc;
+      --primary: #0f766e; --primary-hover: #115e59; --error: #b91c1c;
+      --ok-bg: #dcfce7; --ok-text: #166534; --off-bg: #e2e8f0; --off-text: #334155;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, 'Apple SD Gothic Neo', sans-serif; margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--text); line-height: 1.5; }
+    .board { max-width: 1040px; margin: 0 auto; display: grid; gap: 16px; }
+    @media (min-width: 900px) { .board { grid-template-columns: 1fr 1fr; } }
+    .wide { grid-column: 1 / -1; }
+    header h1 { margin: 0; font-size: 28px; }
+    header p { margin: 4px 0 0; color: var(--muted); }
+    .card { background: var(--card); padding: 24px; border-radius: 16px; border: 1px solid var(--border); }
+    .card h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; font-size: 20px; }
+    .card h2 svg { width: 22px; height: 22px; flex: none; stroke: var(--primary); }
+    .muted { color: var(--muted); font-size: 14px; }
+    .error { color: var(--error); }
+    .big { font-size: 28px; font-weight: 700; margin: 4px 0; font-variant-numeric: tabular-nums; }
+    form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end; }
+    label { display: grid; gap: 4px; font-size: 14px; font-weight: 600; }
+    input, select, button { font: inherit; min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #fff; color: var(--text); width: 100%; }
+    button { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; cursor: pointer; transition: background-color .15s; }
+    button:hover { background: var(--primary-hover); }
+    :focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+    .result { margin-top: 16px; min-height: 24px; }
+    .result p { margin: 4px 0; }
+    ul { list-style: none; padding: 0; margin: 8px 0; }
+    .result li { padding: 6px 0; border-top: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+    .source { margin: 16px 0 0; }
+    .source a, .api-box a { color: var(--primary); }
+    .cities { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+    .city { padding: 16px; border-radius: 12px; background: var(--subtle); border: 1px solid var(--border); }
+    .city .big { font-size: 26px; }
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--off-bg); color: var(--off-text); }
+    .badge.working { background: var(--ok-bg); color: var(--ok-text); }
+    .city-weather { margin-top: 8px; }
+    .api-box { padding: 16px; border: 1px dashed #94a3b8; border-radius: 12px; background: var(--card); font-size: 13px; }
+    .api-box li { margin-top: 12px; font-weight: 600; }
+    .api-box li > div { font-weight: 400; }
+    .api-box code { display: block; word-break: break-all; margin: 4px 0 2px; color: var(--off-text); }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   </style>
 </head>
 <body>
-  <div class="card">
+  <main class="board">
+  <header class="wide">
     <h1>PM 데일리 보드</h1>
     <p>PO/PM이 아침마다 여는 한 화면: 스프린트 일정, 글로벌 미팅 시간, 해외 툴 비용</p>
-  </div>
+  </header>
+
+  <section class="card wide">
+    <h2><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>글로벌 미팅 보드</h2>
+    <div class="cities" id="cities"></div>
+    <p class="muted">업무 중 = 현지 평일 09–18시</p>
+    <p class="muted source"><a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a></p>
+  </section>
 
   <section class="card">
-    <h2>📅 스프린트 종료일 계산</h2>
+    <h2><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>스프린트 종료일 계산</h2>
     <form id="sprint-form">
       <label>시작일 <input type="date" id="sprint-start" required></label>
       <label>영업일 수 <input type="number" id="sprint-days" min="1" max="100" value="10" required></label>
       <label>국가 <select id="sprint-country"></select></label>
       <button>계산</button>
     </form>
-    <div id="sprint-result" aria-live="polite"></div>
-    <p class="muted"><a href="https://date.nager.at" target="_blank" rel="noopener">Holiday data by Nager.Date</a></p>
+    <div id="sprint-result" class="result" aria-live="polite"></div>
+    <p class="muted source"><a href="https://date.nager.at" target="_blank" rel="noopener">Holiday data by Nager.Date</a></p>
   </section>
 
   <section class="card">
-    <h2>🌏 글로벌 미팅 보드</h2>
-    <div class="cities" id="cities"></div>
-    <p class="muted">업무 중 = 현지 평일 09–18시</p>
-    <p class="muted"><a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a></p>
-  </section>
-
-  <section class="card">
-    <h2>💱 해외 SaaS 비용 환산</h2>
+    <h2><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="12" x="2" y="6" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>해외 SaaS 비용 환산</h2>
     <form id="cost-form">
-      <label>월 단가 (USD) <input type="number" id="cost-price" min="0" step="0.01" value="15" required></label>
-      <label>좌석 수 <input type="number" id="cost-seats" min="1" step="1" value="10" required></label>
+      <label>월 단가 (USD) <input type="number" id="cost-price" min="0" step="0.01" value="15" inputmode="decimal" required></label>
+      <label>좌석 수 <input type="number" id="cost-seats" min="1" step="1" value="10" inputmode="numeric" required></label>
     </form>
-    <div id="cost-result" class="muted" aria-live="polite">환율 불러오는 중…</div>
-    <p class="muted"><a href="https://frankfurter.dev" target="_blank" rel="noopener">Frankfurter (ECB 기준환율)</a></p>
+    <div id="cost-result" class="result muted" aria-live="polite">환율 불러오는 중…</div>
+    <p class="muted source"><a href="https://frankfurter.dev" target="_blank" rel="noopener">Frankfurter (ECB 기준환율)</a></p>
   </section>
 
   <!-- 기능 카드는 Issue마다 여기에 추가 -->
 
-  <div class="api-box">
+  <div class="api-box wide">
     <strong>🔌 이 화면이 쓰는 API</strong>
     <ul>
       <li>공휴일 (Nager.Date)
@@ -73,6 +100,7 @@
       </li>
     </ul>
   </div>
+  </main>
 
   <script>
     const API = {
@@ -141,7 +169,7 @@
       showApiUrls('api-holidays', urls);
 
       const run = ++sprintRun;
-      sprintResult.className = 'muted';
+      sprintResult.className = 'result muted';
       sprintResult.textContent = '공휴일 불러오는 중…';
 
       Promise.all(urls.map(fetchJson))
@@ -153,7 +181,7 @@
           const inRange = holidays.filter(h => h.date >= start && h.date <= end);
           const holidayDays = new Set(inRange.map(h => h.date)).size;
 
-          sprintResult.className = '';
+          sprintResult.className = 'result';
           sprintResult.replaceChildren();
           addLine(sprintResult, 'p', `종료일 ${withWeekday(end)}`, 'big');
           addLine(sprintResult, 'p', holidayDays ? `사이에 낀 공휴일 ${holidayDays}일` : '사이에 낀 공휴일 없음');
@@ -164,7 +192,7 @@
         })
         .catch(err => {
           if (run !== sprintRun) return;
-          sprintResult.className = 'error';
+          sprintResult.className = 'result error';
           sprintResult.textContent = `⚠️ 공휴일을 불러오지 못했어요 (${err.message}). 잠시 후 다시 계산해 주세요.`;
         });
     }
@@ -222,8 +250,8 @@
       <div class="city">
         <strong>${c.name}</strong>
         <div class="big" id="city-time-${i}"></div>
-        <div id="city-status-${i}"></div>
-        <div id="city-weather-${i}" class="muted" aria-live="polite">날씨 불러오는 중…</div>
+        <span class="badge" id="city-status-${i}"></span>
+        <div id="city-weather-${i}" class="city-weather muted" aria-live="polite">날씨 불러오는 중…</div>
       </div>`).join('');
 
     function renderClocks() {
@@ -232,7 +260,9 @@
         const isWeekend = weekday === 0 || weekday === 6;
         const isWorking = !isWeekend && hour >= WORK_START_HOUR && hour < WORK_END_HOUR;
         document.getElementById(`city-time-${i}`).textContent = `${WEEKDAYS[weekday]} ${pad(hour)}:${minute}`;
-        document.getElementById(`city-status-${i}`).textContent = isWorking ? '🟢 업무 중' : isWeekend ? '🛌 주말' : '🌙 퇴근';
+        const status = document.getElementById(`city-status-${i}`);
+        status.textContent = isWorking ? '업무 중' : isWeekend ? '주말' : '퇴근';
+        status.classList.toggle('working', isWorking);
       });
     }
 
@@ -242,13 +272,13 @@
         .then(data => {
           const { temperature_2m, weather_code, time } = data.current;
           const [desc, emoji] = WEATHER[weather_code] ?? ['알 수 없음', '❓'];
-          el.className = '';
+          el.className = 'city-weather';
           el.replaceChildren();
           addLine(el, 'div', `${emoji} ${temperature_2m}°C ${desc}`);
           addLine(el, 'div', `기준 ${time.slice(11)} (현지)`, 'muted');
         })
         .catch(err => {
-          el.className = 'error';
+          el.className = 'city-weather error';
           el.textContent = `⚠️ 날씨를 불러오지 못했어요 (${err.message})`;
         });
     }
@@ -268,7 +298,7 @@
 
     function renderCost() {
       if (!usdRate) return; // 환율을 받기 전(로딩·실패)에는 그 화면을 그대로 둠
-      costResult.className = '';
+      costResult.className = 'result';
       costResult.replaceChildren();
       if (!costForm.checkValidity()) {
         addLine(costResult, 'p', '월 단가와 좌석 수를 확인해 주세요', 'error');
@@ -290,7 +320,7 @@
         renderCost();
       })
       .catch(err => {
-        costResult.className = 'error';
+        costResult.className = 'result error';
         costResult.textContent = `⚠️ 환율을 불러오지 못했어요 (${err.message}). 잠시 후 새로고침해 주세요.`;
       });
     costForm.addEventListener('input', renderCost);
