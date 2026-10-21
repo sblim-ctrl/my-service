@@ -6,9 +6,17 @@
   <title>PM 데일리 보드</title>
   <style>
     body { font-family: system-ui, sans-serif; display: grid; place-items: center; align-content: center; gap: 16px; min-height: 100vh; margin: 0; padding: 16px; box-sizing: border-box; background: #eef4fb; color: #222; }
-    .card { max-width: 480px; background: #fff; padding: 32px 48px; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,.08); text-align: center; }
+    .card { width: 100%; max-width: 480px; box-sizing: border-box; background: #fff; padding: 32px 48px; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,.08); text-align: center; }
     .muted { color: #777; font-size: 14px; }
+    .error { color: #c0392b; }
+    .big { font-size: 28px; font-weight: bold; margin: 8px 0; }
+    form { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: end; }
+    label { display: grid; gap: 4px; font-size: 14px; text-align: left; }
+    input, select, button { font: inherit; padding: 4px 8px; border-radius: 8px; border: 1px solid #ccd; }
+    button { background: #345; color: #fff; cursor: pointer; }
+    ul { list-style: none; padding: 0; }
     .api-box { width: 100%; max-width: 480px; box-sizing: border-box; padding: 12px 16px; border: 1px dashed #99a; border-radius: 12px; background: #fff; font-size: 13px; }
+    .api-box code { display: block; word-break: break-all; margin: 6px 0; color: #345; }
   </style>
 </head>
 <body>
@@ -17,11 +25,133 @@
     <p>PO/PM이 아침마다 여는 한 화면: 스프린트 일정, 글로벌 미팅 시간, 해외 툴 비용</p>
   </div>
 
+  <section class="card">
+    <h2>📅 스프린트 종료일 계산</h2>
+    <form id="sprint-form">
+      <label>시작일 <input type="date" id="sprint-start" required></label>
+      <label>영업일 수 <input type="number" id="sprint-days" min="1" max="100" value="10" required></label>
+      <label>국가 <select id="sprint-country"></select></label>
+      <button>계산</button>
+    </form>
+    <div id="sprint-result" aria-live="polite"></div>
+    <p class="muted"><a href="https://date.nager.at" target="_blank" rel="noopener">Holiday data by Nager.Date</a></p>
+  </section>
+
   <!-- 기능 카드는 Issue마다 여기에 추가 -->
 
   <div class="api-box">
     <strong>🔌 이 화면이 쓰는 API</strong>
-    <p class="muted">아직 부르는 API가 없어요. 기능을 만들면 실제로 부른 주소와 "새 탭에서 원본 JSON 보기" 링크가 여기에 보여요.</p>
+    <ul>
+      <li>공휴일 (Nager.Date)
+        <div id="api-holidays"></div>
+      </li>
+    </ul>
   </div>
+
+  <script>
+    const API = {
+      holidays: (year, country) => `https://date.nager.at/api/v3/PublicHolidays/${year}/${country}`, // 🔌 Nager.Date 나라별 공휴일
+    };
+
+    // 영국·중국 등은 Nager.Date 데이터가 지역별로 나뉘거나 연휴가 빠져 있어서 제외
+    const COUNTRIES = { KR: '한국', US: '미국', JP: '일본', SG: '싱가포르', DE: '독일' };
+
+    const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+    const pad = n => String(n).padStart(2, '0');
+    const toIso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const fromIso = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); };
+    const withWeekday = iso => `${iso}(${WEEKDAYS[fromIso(iso).getDay()]})`;
+
+    // 시작일이 영업일이면 1일째로 센다. 주말·공휴일은 건너뛴다.
+    function addBusinessDays(startIso, days, holidayDates) {
+      const d = fromIso(startIso);
+      for (let count = 0; ; d.setDate(d.getDate() + 1)) {
+        const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+        if (!isWeekend && !holidayDates.has(toIso(d)) && ++count === days) return toIso(d);
+      }
+    }
+    console.assert(addBusinessDays('2026-09-21', 5, new Set(['2026-09-24', '2026-09-25', '2026-09-26'])) === '2026-09-29', '영업일 계산 자체 점검 실패');
+
+    const sprintResult = document.getElementById('sprint-result');
+    let sprintRun = 0;
+
+    function addLine(parent, tag, text, className) {
+      const el = document.createElement(tag);
+      el.textContent = text;
+      if (className) el.className = className;
+      parent.append(el);
+    }
+
+    function showApiUrls(urls) {
+      const box = document.getElementById('api-holidays');
+      box.replaceChildren();
+      urls.forEach(url => {
+        const code = document.createElement('code');
+        code.textContent = url;
+        const link = document.createElement('a');
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = '새 탭에서 원본 JSON 보기';
+        box.append(code, link);
+      });
+    }
+
+    const fetchJson = url => fetch(url) // 🔌 API 호출
+      .then(res => {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      });
+
+    function calcSprint() {
+      const start = document.getElementById('sprint-start').value;
+      const days = Number(document.getElementById('sprint-days').value);
+      const country = document.getElementById('sprint-country').value;
+      const year = Number(start.slice(0, 4));
+      // 영업일은 최대 100일이라 종료일은 늦어도 다음 해 안에 있음 → 두 해를 함께 불러옴
+      const urls = [year, year + 1].map(y => API.holidays(y, country));
+      showApiUrls(urls);
+
+      const run = ++sprintRun;
+      sprintResult.className = 'muted';
+      sprintResult.textContent = '공휴일 불러오는 중…';
+
+      Promise.all(urls.map(fetchJson))
+        .then(lists => {
+          if (run !== sprintRun) return; // 응답 전에 다시 계산했으면 무시
+          // shortcut: 전국 공휴일만 셈(미국 주별 공휴일 등 제외), 지역 공휴일이 필요하면 counties로 지역 선택 추가
+          const holidays = lists.flat().filter(h => h.global && h.types.includes('Public'));
+          const end = addBusinessDays(start, days, new Set(holidays.map(h => h.date)));
+          const inRange = holidays.filter(h => h.date >= start && h.date <= end);
+          const holidayDays = new Set(inRange.map(h => h.date)).size;
+
+          sprintResult.className = '';
+          sprintResult.replaceChildren();
+          addLine(sprintResult, 'p', `종료일 ${withWeekday(end)}`, 'big');
+          addLine(sprintResult, 'p', holidayDays ? `사이에 낀 공휴일 ${holidayDays}일` : '사이에 낀 공휴일 없음');
+          const list = document.createElement('ul');
+          inRange.forEach(h => addLine(list, 'li', `${withWeekday(h.date)} ${country === 'KR' ? h.localName : h.name}`));
+          sprintResult.append(list);
+          addLine(sprintResult, 'p', `${COUNTRIES[country]} 전국 공휴일 기준 (${year}–${year + 1}년)`, 'muted');
+        })
+        .catch(err => {
+          if (run !== sprintRun) return;
+          sprintResult.className = 'error';
+          sprintResult.textContent = `⚠️ 공휴일을 불러오지 못했어요 (${err.message}). 잠시 후 다시 계산해 주세요.`;
+        });
+    }
+
+    const countrySelect = document.getElementById('sprint-country');
+    countrySelect.innerHTML = Object.entries(COUNTRIES).map(([code, name]) => `<option value="${code}">${name}</option>`).join('');
+    const sprintForm = document.getElementById('sprint-form');
+    countrySelect.addEventListener('change', () => sprintForm.requestSubmit()); // 입력 검사를 거쳐서 계산
+
+    document.getElementById('sprint-start').value = toIso(new Date());
+    sprintForm.addEventListener('submit', e => {
+      e.preventDefault();
+      calcSprint();
+    });
+    calcSprint();
+  </script>
 </body>
 </html>
