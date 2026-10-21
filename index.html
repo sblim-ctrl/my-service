@@ -47,6 +47,16 @@
     <p class="muted"><a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo.com</a></p>
   </section>
 
+  <section class="card">
+    <h2>💱 해외 SaaS 비용 환산</h2>
+    <form id="cost-form">
+      <label>월 단가 (USD) <input type="number" id="cost-price" min="0" step="0.01" value="15" required></label>
+      <label>좌석 수 <input type="number" id="cost-seats" min="1" step="1" value="10" required></label>
+    </form>
+    <div id="cost-result" class="muted" aria-live="polite">환율 불러오는 중…</div>
+    <p class="muted"><a href="https://frankfurter.dev" target="_blank" rel="noopener">Frankfurter (ECB 기준환율)</a></p>
+  </section>
+
   <!-- 기능 카드는 Issue마다 여기에 추가 -->
 
   <div class="api-box">
@@ -58,6 +68,9 @@
       <li>날씨 (Open-Meteo)
         <div id="api-weather"></div>
       </li>
+      <li>환율 (Frankfurter)
+        <div id="api-rate"></div>
+      </li>
     </ul>
   </div>
 
@@ -65,6 +78,7 @@
     const API = {
       holidays: (year, country) => `https://date.nager.at/api/v3/PublicHolidays/${year}/${country}`, // 🔌 Nager.Date 나라별 공휴일
       weather: (lat, lon) => `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`, // 🔌 Open-Meteo 현재 날씨
+      usdKrw: 'https://api.frankfurter.dev/v1/latest?base=USD&symbols=KRW', // 🔌 Frankfurter 달러→원 기준환율
     };
 
     // 영국·중국 등은 Nager.Date 데이터가 지역별로 나뉘거나 연휴가 빠져 있어서 제외
@@ -244,6 +258,43 @@
     const weatherUrls = CITIES.map(c => API.weather(c.lat, c.lon));
     showApiUrls('api-weather', weatherUrls);
     weatherUrls.forEach(loadWeather); // 도시마다 따로 불러서 한 곳이 실패해도 나머지는 보이게
+
+    // ── 해외 SaaS 비용 환산 ──
+    const costForm = document.getElementById('cost-form');
+    const costResult = document.getElementById('cost-result');
+    const won = n => Math.round(n).toLocaleString('ko-KR');
+    const usd = n => n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    let usdRate = null; // { rate, date }
+
+    function renderCost() {
+      if (!usdRate) return; // 환율을 받기 전(로딩·실패)에는 그 화면을 그대로 둠
+      costResult.className = '';
+      costResult.replaceChildren();
+      if (!costForm.checkValidity()) {
+        addLine(costResult, 'p', '월 단가와 좌석 수를 확인해 주세요', 'error');
+        return;
+      }
+      const price = Number(document.getElementById('cost-price').value);
+      const seats = Number(document.getElementById('cost-seats').value);
+      const totalUsd = price * seats;
+      addLine(costResult, 'p', `월 약 ${won(totalUsd * usdRate.rate)}원`, 'big');
+      addLine(costResult, 'p', `$${usd(price)} × ${seats}석 = $${usd(totalUsd)}`);
+      addLine(costResult, 'p', `1 USD = ${usdRate.rate.toLocaleString('ko-KR')}원 (${usdRate.date} 기준)`, 'muted');
+    }
+
+    showApiUrls('api-rate', [API.usdKrw]);
+    fetchJson(API.usdKrw)
+      .then(data => {
+        if (typeof data.rates?.KRW !== 'number') throw new Error('원화 환율이 응답에 없음');
+        usdRate = { rate: data.rates.KRW, date: data.date };
+        renderCost();
+      })
+      .catch(err => {
+        costResult.className = 'error';
+        costResult.textContent = `⚠️ 환율을 불러오지 못했어요 (${err.message}). 잠시 후 새로고침해 주세요.`;
+      });
+    costForm.addEventListener('input', renderCost);
+    costForm.addEventListener('submit', e => e.preventDefault());
   </script>
 </body>
 </html>
